@@ -1,0 +1,11 @@
+Simulating for 100 instructions...
+
+Current pipeline PC state :
+-------------------------------------
+CYCLE 1:0x00400000|          |          |          |          
+
+Current pipeline PC state :
+-------------------------------------
+CYCLE 2:0x00400004|0x00400000|          |          |          
+
+Memory Write Error: Exceed memory boundary 0x0

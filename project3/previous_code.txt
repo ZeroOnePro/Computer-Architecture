@@ -1,0 +1,446 @@
+void Forwarding_Unit()
+{
+	ALU_MUX1 = 0;
+	ALU_MUX2 = 0;
+	instruction* inst_ex = inst[EX_STAGE];
+	// EX/MEM 레지스터에서 ALU INPUT으로 FORWARD A와 FORWARD B를 나눔 (bypass 1)
+	if (CURRENT_STATE.EX_MEM_DEST == CURRENT_STATE.ID_EX_RS) // forward A
+		ALU_MUX1 = 1; // RESULT를 INPUT으로 할 때 1로 설정
+	if (CURRENT_STATE.EX_MEM_DEST == CURRENT_STATE.ID_EX_RT) // forward B
+		ALU_MUX2 = 1; // RESULT를 INPUT으로 할 때 1로 설정
+	// MEM/WB 레지스터에서 ALU INPUT으로 FORWARD A와 FORWARD B를 나눔 (bypass 2) LW의 경우에 발생한다.
+	if (CURRENT_STATE.MEM_WB_DEST == CURRENT_STATE.ID_EX_RS && OPCODE(inst[MEM_STAGE])==0x23) // 현재 id/ex있는 rs번호와  이전 이전의 LW의  RT(i)번호와 같다면
+		ALU_MUX1 = 2; // mem/wb 레지스터의 memout을 ALU INPUT으로 포워딩
+	if (CURRENT_STATE.MEM_WB_DEST == CURRENT_STATE.ID_EX_RT && OPCODE(inst[MEM_STAGE])==0x23)  // 현재 id/ex있는 RT번호와  이전 이전의 LW의  RT(i)번호와 같다면
+		ALU_MUX2 = 2;
+	// 00 01 02 10 11 12 20 21 22 - For R-type
+	switch(OPCODE(inst_ex))
+	{
+		case 0x0:		//(0x000000)ADDU, AND, NOR, OR, SLTU, SLL, SRL, SUBU  if JR
+			if (ALU_MUX1 == 0 && ALU_MUX2 == 1) // r-type && RAW forwarding result into RT
+			{
+				ALU_INPUT1 = CURRENT_STATE.ID_EX_REG1; // RS는 REG에서 읽어온 그대로
+				ALU_INPUT2 = CURRENT_STATE.EX_MEM_ALU_OUT; // RT에 ALU의 결과 FORWARD
+			}
+			else if (ALU_MUX1 == 0 && ALU_MUX2 == 2) // r-type && forwarding result into rt
+			{
+				ALU_INPUT1 = CURRENT_STATE.ID_EX_REG1; // RS는 REG에서 읽어온 그대로
+				ALU_INPUT2 = CURRENT_STATE.MEM_WB_MEM_OUT; // RT에 LW 결과 FORWARD
+			}
+			else if (ALU_MUX1 == 1 && ALU_MUX2 == 0)
+			{
+				ALU_INPUT2 = CURRENT_STATE.ID_EX_REG2; // Rt는 REG에서 읽어온 그대로
+				ALU_INPUT1 = CURRENT_STATE.EX_MEM_ALU_OUT; // Rs에 ALU의 결과 FORWARD
+			}
+			else if (ALU_MUX1 == 1 && ALU_MUX2 == 1)
+			{
+				ALU_INPUT1 = CURRENT_STATE.EX_MEM_ALU_OUT;
+				ALU_INPUT2 = CURRENT_STATE.EX_MEM_ALU_OUT;
+			}
+			else if (ALU_MUX1 == 1 && ALU_MUX2 == 2)
+			{
+				ALU_INPUT1 = CURRENT_STATE.EX_MEM_ALU_OUT;
+				ALU_INPUT2 = CURRENT_STATE.MEM_WB_MEM_OUT;
+			}
+			else if (ALU_MUX1 == 2 && ALU_MUX2 == 0) // lw
+			{
+				ALU_INPUT1 = CURRENT_STATE.MEM_WB_MEM_OUT;
+				ALU_INPUT2 = CURRENT_STATE.ID_EX_REG2;
+			}
+			else if (ALU_MUX1 == 2 && ALU_MUX2 == 1) // lw 2 4(5) - add 4 5 6 - add 7 2 4 
+			{
+				ALU_INPUT1 = CURRENT_STATE.MEM_WB_MEM_OUT;
+				ALU_INPUT2 = CURRENT_STATE.EX_MEM_ALU_OUT;
+			}
+			else if (ALU_MUX1 == 2 && ALU_MUX2 == 2) // lw 2 4(5) - - add 4 2 2
+			{
+				ALU_INPUT1 = CURRENT_STATE.MEM_WB_MEM_OUT;
+				ALU_INPUT2 = CURRENT_STATE.MEM_WB_MEM_OUT;
+			}
+			else
+			{
+				ALU_INPUT1 = CURRENT_STATE.ID_EX_REG1; // RS는 REG에서 읽어온 그대로
+				ALU_INPUT2 = CURRENT_STATE.ID_EX_REG2; // RT는 REG에서 읽어온 그대로
+			}
+			break;
+			// for i - type forwarding
+		case 0xc:		//(0x001100)ANDI
+		case 0xf:		//(0x001111)LUI
+		case 0xd:		//(0x001101)ORI
+		case 0xb:		//(0x001011)SLTIU
+		case 0x23:		//(0x100011)LW
+		case 0x2b:		//(0x101011)SW // RT가 겹치는 경우는 생각 안해도 된다. RT가 저장공간으로 쓰일 것이므로
+			if (ALU_MUX1 == 0 && ALU_MUX2 == 0)
+			{
+				ALU_INPUT1 = CURRENT_STATE.ID_EX_REG1;
+				ALU_INPUT2 = CURRENT_STATE.ID_EX_IMM;
+			}
+			else if (ALU_MUX1 == 1 && ALU_MUX2 == 0)
+			{
+				ALU_INPUT1 = CURRENT_STATE.EX_MEM_ALU_OUT;
+				ALU_INPUT2 = CURRENT_STATE.ID_EX_IMM;
+			}
+			else if (ALU_MUX1 == 2 && ALU_MUX2 == 0)
+			{
+				ALU_INPUT1 = CURRENT_STATE.MEM_WB_MEM_OUT;
+				ALU_INPUT2 = CURRENT_STATE.ID_EX_IMM;
+			}
+			break;
+		case 0x4: // beq
+		case 0x5: // bne
+			if (ALU_MUX1 == 0 && ALU_MUX2 == 1)
+			{
+				ALU_INPUT1 = CURRENT_STATE.ID_EX_REG1;
+				ALU_INPUT2 = CURRENT_STATE.EX_MEM_ALU_OUT;
+			}
+			else if (ALU_MUX1 == 0 && ALU_MUX2 == 2)
+			{
+				ALU_INPUT1 = CURRENT_STATE.ID_EX_REG1;
+				ALU_INPUT2 = CURRENT_STATE.MEM_WB_MEM_OUT;
+			}
+			else if (ALU_MUX1 == 1 && ALU_MUX2 == 0)
+			{
+				ALU_INPUT2 = CURRENT_STATE.ID_EX_REG2;
+				ALU_INPUT1 = CURRENT_STATE.EX_MEM_ALU_OUT;
+			}
+			else if (ALU_MUX1 == 1 && ALU_MUX2 == 1)
+			{
+				ALU_INPUT1 = CURRENT_STATE.EX_MEM_ALU_OUT;
+				ALU_INPUT2 = CURRENT_STATE.EX_MEM_ALU_OUT;
+			}
+			else if (ALU_MUX1 == 1 && ALU_MUX2 == 2)
+			{
+				ALU_INPUT1 = CURRENT_STATE.EX_MEM_ALU_OUT;
+				ALU_INPUT2 = CURRENT_STATE.MEM_WB_MEM_OUT;
+			}
+			else if (ALU_MUX1 == 2 && ALU_MUX2 == 0)
+			{
+				ALU_INPUT1 = CURRENT_STATE.MEM_WB_MEM_OUT;
+				ALU_INPUT2 = CURRENT_STATE.ID_EX_REG2;
+			}
+			else if (ALU_MUX1 == 2 && ALU_MUX2 == 1)
+			{
+				ALU_INPUT1 = CURRENT_STATE.MEM_WB_MEM_OUT;
+				ALU_INPUT2 = CURRENT_STATE.EX_MEM_ALU_OUT;
+			}
+			else if (ALU_MUX1 == 2 && ALU_MUX2 == 2)
+			{
+				ALU_INPUT1 = CURRENT_STATE.MEM_WB_MEM_OUT;
+				ALU_INPUT2 = CURRENT_STATE.MEM_WB_MEM_OUT;
+			}
+			else
+			{
+				ALU_INPUT1 = CURRENT_STATE.ID_EX_REG1; // RS는 REG에서 읽어온 그대로
+				ALU_INPUT2 = CURRENT_STATE.ID_EX_REG2; // RT는 REG에서 읽어온 그대로
+			}
+			break;
+		default:
+			break;
+	}
+}
+
+void ALU_OPERATION()
+{
+	instruction* inst_ex = inst[EX_STAGE];
+		switch (OPCODE(inst_ex))
+		{
+		case 0x9:
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT1 + ALU_INPUT2;
+			break;
+		case 0xc:
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT1 & ALU_INPUT2;
+			break;
+		case 0xf:
+			CURRENT_STATE.EX_MEM_ALU_OUT = (ALU_INPUT2 << 16);
+			break;
+		case 0xd:
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT1 | ALU_INPUT2;
+			break;
+		case 0xb:
+			if (ALU_INPUT1 < ALU_INPUT2)
+			{
+				CURRENT_STATE.EX_MEM_ALU_OUT = 1;
+			}
+			else
+			{
+				CURRENT_STATE.EX_MEM_ALU_OUT = 0;
+			}
+			break;
+		case 0x23:
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT1 + ALU_INPUT2;
+			break;
+		case 0x2b:
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT1 + ALU_INPUT2;
+			break;
+		case 0x4: // beq
+			if (ALU_INPUT1 == ALU_INPUT2)
+			{
+				CURRENT_STATE.EX_MEM_BR_TAKE = 1; // Zero test 결과 저장 1 - jump , 0 - not jump
+			}
+			else
+				CURRENT_STATE.EX_MEM_BR_TAKE = 0;
+			break;
+		case 0x5: // bne
+			if (ALU_INPUT1 != ALU_INPUT2)
+			{
+				CURRENT_STATE.EX_MEM_BR_TAKE = 1; // Zero test 결과 저장 1 - jump , 0 - not jump // IF의 주소 선택 단계시 사용
+			}
+			else
+				CURRENT_STATE.EX_MEM_BR_TAKE = 0;
+			break;
+		case 0x0:
+		if (FUNC(inst_ex) == 0x21)
+		{
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT1 + ALU_INPUT2;
+		}
+		else if (FUNC(inst_ex) == 0x24)
+		{
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT1 & ALU_INPUT2;
+		}
+		else if (FUNC(inst_ex) == 0x27)
+		{
+			CURRENT_STATE.EX_MEM_ALU_OUT = ~(ALU_INPUT1 | ALU_INPUT2);
+		}
+		else if (FUNC(inst_ex) == 0x25)
+		{
+			CURRENT_STATE.EX_MEM_ALU_OUT = (ALU_INPUT1 | ALU_INPUT2);
+		}
+		else if (FUNC(inst_ex) == 0x2b)
+		{
+			if (ALU_INPUT1 < ALU_INPUT2)
+			{
+				CURRENT_STATE.EX_MEM_ALU_OUT = 1;
+			}
+		}
+		else if (FUNC(inst_ex) == 0x00)
+		{
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT2 << SHAMT(inst_ex);
+		}
+		else if (FUNC(inst_ex) == 0x02)
+		{
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT2 >> SHAMT(inst_ex);
+		}
+		else if (FUNC(inst_ex) == 0x23)
+		{
+			CURRENT_STATE.EX_MEM_ALU_OUT = ALU_INPUT1 - ALU_INPUT2;
+		}
+		break;
+		default:
+			break;
+		}
+}
+
+void FLUSH_IF()
+{
+	CURRENT_STATE.PIPE[IF_STAGE] = 0;
+	CURRENT_STATE.IF_ID_NPC = 0;
+	inst[IF_STAGE] = NULL;
+}
+
+void FLUSH_ID()
+{
+	CURRENT_STATE.PIPE[ID_STAGE] = 0;
+	CURRENT_STATE.ID_EX_NPC=0;
+	CURRENT_STATE.ID_EX_REG1=0;
+	CURRENT_STATE.ID_EX_REG2=0;
+	CURRENT_STATE.ID_EX_RS=0;
+	CURRENT_STATE.ID_EX_RT=0;
+	CURRENT_STATE.ID_EX_IMM=0;
+	CURRENT_STATE.ID_EX_DEST=0;
+	inst[ID_STAGE]=NULL;
+}
+
+void FLUSH_EX()
+{
+	CURRENT_STATE.PIPE[EX_STAGE] = 0;
+	CURRENT_STATE.EX_MEM_NPC=0;
+	CURRENT_STATE.EX_MEM_ALU_OUT=0;
+	CURRENT_STATE.EX_MEM_W_VALUE=0;
+	CURRENT_STATE.EX_MEM_BR_TARGET=0;
+	CURRENT_STATE.EX_MEM_BR_TAKE=0;
+	CURRENT_STATE.EX_MEM_DEST=0;
+	inst[EX_STAGE]=NULL;
+}
+
+void IF_Stage() /* fetch instruction */  
+{
+	if(CURRENT_STATE.PIPE_STALL[IF_STAGE]) FLUSH_IF(); // STALL
+	inst[IF_STAGE]=get_inst_info(CURRENT_STATE.PC);// fetch
+	CURRENT_STATE.IF_ID_NPC = CURRENT_STATE.PC; // pc in
+	// CURRENT_STATE.PIPE[IF_STAGE]=CURRENT_STATE.PC;
+}
+
+void ID_Stage() /*inst decode and read read*/
+{
+	if(CURRENT_STATE.PIPE_STALL[ID_STAGE]) FLUSH_ID();
+	// 디코딩 필요없음 && IF/ID 레지스터 -> ID.EX 레지스터로 이동시키기
+	inst[ID_STAGE] = inst[IF_STAGE]; // INST MOVE
+	//CURRENT_STATE.PIPE[IF_STAGE]=CURRENT_STATE.PC+4;
+	//CURRENT_STATE.PIPE[ID_STAGE]=CURRENT_STATE.PC;
+	CURRENT_STATE.ID_EX_NPC = CURRENT_STATE.IF_ID_NPC; // PC+4
+	instruction* inst_id = inst[ID_STAGE];
+	// 디코딩 필요있음 && IF/ID 레지스터 -> ID.EX 레지스터로 이동시키기
+	switch(OPCODE(inst_id))
+	{
+		// for i - type inst
+		case 0xc:		//(0x001100)ANDI
+		case 0xf:		//(0x001111)LUI
+		case 0xd:		//(0x001101)ORI
+		case 0xb:		//(0x001011)SLTIU
+		case 0x23:		//(0x100011)LW
+		case 0x2b:		//(0x101011)SW
+		case 0x4:		//(0x000100)BEQ // rt = rs ? 후 아닐 때 점프 하는 기능
+		case 0x5:       //(0x000101)BNE // rt != rs ? 후 아닐 때 점프하는 기능
+			CURRENT_STATE.ID_EX_REG1 = CURRENT_STATE.REGS[RS(inst_id)]; // rs내의 값을 읽어와서 id/ex register에 저장
+			CURRENT_STATE.ID_EX_REG2 = CURRENT_STATE.REGS[RT(inst_id)]; // rt내의 값을 읽어와서 id/ex register에 저장
+			CURRENT_STATE.ID_EX_IMM = IMM(inst_id); // imm필드를 sign extension시키고 id/ex register에 저
+			CURRENT_STATE.ID_EX_RS = RS(inst_id);  // 포워딩을 위해 rs의 번호를 id/ex register에 저장
+			CURRENT_STATE.ID_EX_RT = RT(inst_id);  // 포워딩을 위해 rt의 번호를 id/ex register에 저장 // I TYPE은 RT에 연산결과가 저장되기 때문에..
+			break;
+		// for r - type inst
+		case 0x0:
+			if (FUNC(inst_id) == 0x8) // JR - CONTROL HAZARD
+			{
+				CURRENT_STATE.JUMP_PC = CURRENT_STATE.REGS[RS(inst_id)];
+				CURRENT_STATE.J_ENABLE = 1;
+			}
+			else //(0x000000)ADDU, AND, NOR, OR, SLTU, SLL, SRL, SUBU
+			{
+				CURRENT_STATE.ID_EX_REG1 = CURRENT_STATE.REGS[RS(inst_id)]; // rs내의 값을 읽어와서 id/ex register에 저장
+				CURRENT_STATE.ID_EX_REG2 = CURRENT_STATE.REGS[RT(inst_id)]; // rt내의 값을 읽어와서 id/ex register에 저장
+				CURRENT_STATE.ID_EX_RS = RS(inst_id); // 포워딩을 위해 rs의 번호를 id/ex에 저장
+				CURRENT_STATE.ID_EX_RT = RT(inst_id); // 포워딩을 위해 rt의 번호를 id/ex에 저장
+				CURRENT_STATE.ID_EX_DEST = RD(inst_id); // 포워딩을 위해 rd의 번호를 id/ex에 저장
+			}
+			break;
+		// for j - type inst - CONTROL HAZARD
+		case 0x2:		//(0x000010)J
+			CURRENT_STATE.JUMP_PC = (TARGET(inst_id) << 2); // j 타입 target 계산 하고
+			CURRENT_STATE.J_ENABLE = 1; // 점프한다고 알려줄 비트를 만들었다
+			break;
+		case 0x3:		//(0x000011)JAL
+			CURRENT_STATE.REGS[31] = CURRENT_STATE.IF_ID_NPC + 4; // 돌아올 위치를 31번 레지스터에 저장시키고
+			CURRENT_STATE.JUMP_PC=(TARGET(inst_id) << 2); // j 타입 target 계산 하고
+			CURRENT_STATE.J_ENABLE = 1; // 점프한다고 알려줄 비트를 만들었다 나중에 if에서 먹스로 pc 선정시 쓸거임!!
+			break;
+		default :
+			break;
+	}
+}
+
+void EX_Stage()/*excute operation or calculate address*/
+{
+	if(CURRENT_STATE.PIPE_STALL[EX_STAGE]) FLUSH_EX();
+
+	inst[EX_STAGE]=inst[ID_STAGE];
+	instruction* inst_ex = inst[EX_STAGE];
+
+	// J-TYPE CONTROL HAZARD 처리
+	if (CURRENT_STATE.J_ENABLE)
+	{
+		FLUSH_ID(); // ID FLUSH
+		CURRENT_STATE.PC = CURRENT_STATE.JUMP_PC;
+		CURRENT_STATE.J_ENABLE = 0; // NOT ANYMORE J-TYPE !
+		//CURRENT_STATE.PIPE_STALL[ID_STAGE] = 1;
+	}
+
+	/* pipe line register 이동 */
+	if (OPCODE(inst_ex) == 0x0) CURRENT_STATE.EX_MEM_DEST = CURRENT_STATE.ID_EX_DEST; // R TYPE 일 때 MEM단계에 필요한 레지스터 번호
+	else CURRENT_STATE.EX_MEM_DEST = CURRENT_STATE.ID_EX_RT;
+	CURRENT_STATE.EX_MEM_W_VALUE = CURRENT_STATE.ID_EX_REG2; // SW명령어 - 메모리에 값 저장 = RT의 값을 읽어온다.
+	CURRENT_STATE.EX_MEM_NPC = CURRENT_STATE.ID_EX_NPC; // pc 옮기기
+	
+	// LOAD USE
+	if (OPCODE(inst[MEM_STAGE]) == 0x23)
+	{
+		switch(OPCODE(inst[EX_STAGE]))
+		{
+		case 0x0:
+		case 0x4:
+		case 0x5:
+			if(RS(inst[EX_STAGE]) == RT(inst[MEM_STAGE])) // NEXT 명령어 RS와 IW가 DEPENDENCY
+			{
+				CURRENT_STATE.PIPE_STALL[EX_STAGE] = 1;
+				FLUSH_EX();
+			}
+			if (RT(inst[EX_STAGE]) == RT(inst[MEM_STAGE])) // NEXT 명령어 RT와 IW가 DEPENDENCY
+			{
+				CURRENT_STATE.PIPE_STALL[EX_STAGE] = 1;
+				FLUSH_EX();
+			}
+			if (RS(inst[EX_STAGE]) == RT(inst[MEM_STAGE]) && RT(inst[EX_STAGE]) == RT(inst[MEM_STAGE]))
+			{
+				CURRENT_STATE.PIPE_STALL[EX_STAGE] = 1;
+				FLUSH_EX();
+			}
+			break;
+		case 0xc:		//(0x001100)ANDI
+		case 0xf:		//(0x001111)LUI
+		case 0xd:		//(0x001101)ORI
+		case 0xb:		//(0x001011)SLTIU
+		case 0x23:		//(0x100011)LW
+		case 0x2b:		//(0x101011)SW
+			if (RS(inst[EX_STAGE]) == RT(inst[MEM_STAGE])) // NEXT 명령어 RS와 IW가 DEPENDENCY
+			{
+				CURRENT_STATE.PIPE_STALL[EX_STAGE] = 1;
+				FLUSH_EX();
+			}
+			break;
+			default:
+			break;
+		}
+	}
+		/* EX 수행 */
+		Forwarding_Unit();
+		ALU_OPERATION();
+		// zero test 후에 branch일 경우 branch주소 계산
+		if (CURRENT_STATE.EX_MEM_BR_TAKE) CURRENT_STATE.EX_MEM_BR_TARGET = CURRENT_STATE.ID_EX_NPC + (CURRENT_STATE.ID_EX_IMM << 2);
+}
+
+void MEM_Stage() /*access memory*/
+{
+
+	inst[MEM_STAGE]=inst[EX_STAGE];
+	instruction* inst_mem = inst[MEM_STAGE];
+	CURRENT_STATE.MEM_WB_NPC= CURRENT_STATE.EX_MEM_NPC; // pc 옮기기
+	// CONTROL HAZARD UNIT - BRANCH - IF ID EX FLUSH 시키고..
+	if (CURRENT_STATE.EX_MEM_BR_TAKE) // if branch 해야 할 때
+	{
+		FLUSH_EX();
+		FLUSH_ID();
+		FLUSH_IF();
+		CURRENT_STATE.PC = CURRENT_STATE.EX_MEM_BR_TARGET;
+	}
+	// EX/MEM 레지스터 -> MEM/WB 레지스터
+	// LW와 SW 명령어 메모리에 저장 혹은 읽어오는 작업 시키고
+	else // no branch
+	{
+		CURRENT_STATE.MEM_WB_ALU_OUT = CURRENT_STATE.EX_MEM_ALU_OUT;
+		CURRENT_STATE.MEM_WB_DEST = CURRENT_STATE.EX_MEM_DEST;
+		if (OPCODE(inst_mem) == 0x23) // lw
+		{
+			CURRENT_STATE.MEM_WB_MEM_OUT = mem_read_32(CURRENT_STATE.EX_MEM_ALU_OUT);
+		}
+		else if (OPCODE(inst_mem) == 0x2b) // SW
+		{
+			mem_write_32(CURRENT_STATE.EX_MEM_ALU_OUT,CURRENT_STATE.EX_MEM_W_VALUE);
+		}
+	}
+}
+
+void WB_Stage() /*write result back to reg*/ 
+{
+	inst[WB_STAGE]=inst[MEM_STAGE];
+
+	// 메모리에서 나온 값인지, ALU_OUT 값을 쓸건지 판단후에 MEM_WB_DEST에 저장되어있는 레지스터 번호에 그값을 넣어준다.
+	instruction* inst_wb = inst[WB_STAGE];
+
+	if (OPCODE(inst_wb) == 0x23) // LW
+	{
+		CURRENT_STATE.REGS[CURRENT_STATE.MEM_WB_DEST] = CURRENT_STATE.MEM_WB_MEM_OUT;
+	}
+	else
+	{
+		CURRENT_STATE.REGS[CURRENT_STATE.MEM_WB_DEST] = CURRENT_STATE.MEM_WB_ALU_OUT;
+	}
+}
