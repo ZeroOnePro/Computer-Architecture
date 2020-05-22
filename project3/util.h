@@ -9,6 +9,16 @@
 /*                                                             */
 /***************************************************************/
 
+/*
+#define SKIP 5 : stall을 구현하는 데 있어 각각의 스테이지를 스킵하기 위한 변수로 사용
+
+[CPU_State_Struct]
+int PIPE_NUM : 현재 파이프라인 내에 있는 레지스터 수를 나타냄
+int flag[2] : flag[0]은 stall되는 경우, pc 값 조절을 위해 사용한 플래그, flag[1]은 이후 EX_Stage 내에서 stall이 됐는지 확인하는 플래그
+ID_EX_REG1 ~ 3 : 각각 rs, rt, rd에 해당하는 레지스터를 나타냄
+ID_EX_SHAMT, ID_EX_FUNCT, ID_EX_TARGET : 각각 R type, J type에 사용할 값
+*/
+
 #ifndef _UTIL_H_
 #define _UTIL_H_
 
