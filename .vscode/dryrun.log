@@ -1,0 +1,6 @@
+make --dry-run --always-make --keep-going --print-directory
+make: Entering directory `/Users/sungminyou/Workspace/personal/Computer-Architecture'
+make: Leaving directory `/Users/sungminyou/Workspace/personal/Computer-Architecture'
+ 
+make: *** No targets specified and no makefile found.  Stop.
+
